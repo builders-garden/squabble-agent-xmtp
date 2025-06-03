@@ -24,6 +24,7 @@ import {
   type DecodedMessage,
   type XmtpEnv,
 } from "@xmtp/node-sdk";
+import { createSquabbleTools } from "./lib/tools/squabble-tools";
 
 const {
   WALLET_KEY,
@@ -32,6 +33,10 @@ const {
   CDP_API_KEY_NAME,
   CDP_API_KEY_PRIVATE_KEY,
   NETWORK_ID,
+  OPENAI_API_KEY,
+  SQUABBLE_URL,
+  AGENT_SECRET,
+  NEYNAR_API_KEY,
 } = validateEnvironment([
   "WALLET_KEY",
   "ENCRYPTION_KEY",
@@ -39,6 +44,10 @@ const {
   "CDP_API_KEY_NAME",
   "CDP_API_KEY_PRIVATE_KEY",
   "NETWORK_ID",
+  "OPENAI_API_KEY",
+  "SQUABBLE_URL",
+  "AGENT_SECRET",
+  "NEYNAR_API_KEY",
 ]);
 
 // Storage constants
@@ -135,14 +144,21 @@ async function initializeXmtpClient() {
  * Initialize the agent with CDP Agentkit.
  *
  * @param userId - The unique identifier for the user
+ * @param conversation - The XMTP conversation instance
+ * @param client - The XMTP client instance
+ * @param senderWalletAddress - The sender's wallet address
  * @returns The initialized agent and its configuration
  */
 async function initializeAgent(
   userId: string,
+  conversation: Conversation,
+  client: Client,
+  senderWalletAddress: string,
 ): Promise<{ agent: Agent; config: AgentConfig }> {
   try {
     const llm = new ChatOpenAI({
-      model: "gpt-4.1-mini",
+      model: "gpt-4o-mini",
+      apiKey: OPENAI_API_KEY,
     });
 
     const storedWalletData = getWalletData(userId);
@@ -156,6 +172,7 @@ async function initializeAgent(
       cdpWalletData: storedWalletData || undefined,
       networkId: NETWORK_ID || "base-sepolia",
     };
+    console.log(config);
 
     const walletProvider = await CdpWalletProvider.configureWithWallet(config);
 
@@ -177,6 +194,26 @@ async function initializeAgent(
 
     const tools = await getLangChainTools(agentkit);
 
+    // Add Squabble-specific tools
+    const squabbleTools = createSquabbleTools({
+      conversation,
+      xmtpClient: client,
+      senderAddress: userId,
+      agentInboxId: client.inboxId,
+      squabbleUrl: SQUABBLE_URL,
+      agentSecret: AGENT_SECRET,
+    });
+
+    const allTools = [...tools, ...squabbleTools];
+
+    console.log(
+      `🛠️  Agent initialized with ${tools.length} AgentKit tools + ${squabbleTools.length} Squabble tools = ${allTools.length} total tools`,
+    );
+    console.log(
+      "🎮 Available Squabble tools:",
+      squabbleTools.map((tool) => tool.name).join(", "),
+    );
+
     memoryStore[userId] = new MemorySaver();
 
     const agentConfig: AgentConfig = {
@@ -185,24 +222,10 @@ async function initializeAgent(
 
     const agent = createReactAgent({
       llm,
-      tools,
+      tools: allTools,
       checkpointSaver: memoryStore[userId],
       messageModifier: `
-        You are a DeFi Payment Agent that assists users with sending payments and managing their crypto assets.
-        You can interact with the blockchain using Coinbase Developer Platform AgentKit.
-
-        When a user asks you to make a payment or check their balance:
-        1. Always check the wallet details first to see what network you're on
-        2. If on base-sepolia testnet, you can request funds from the faucet if needed
-        3. For mainnet operations, provide wallet details and request funds from the user
-        4. If the user doesn't have any funds, ask them to deposit on your wallet address
-
-        IMPORTANT:
-        Your default network is Base Sepolia testnet. Your main and only token for transactions is USDC. Token address is 0x036CbD53842c5426634e7929541eC2318f3dCF7e. USDC is gasless on Base.
-
-        
-        Be concise, helpful, and security-focused in all your interactions. You can only perform payment and wallet-related tasks. For other requests, politely explain that you're 
-        specialized in processing payments and can't assist with other tasks.
+        "You are a helpful game assistant for Squabble. Keep responses concise and engaging. Squabble is a Scrabble like game where you can play with your friends."
       `,
     });
 
@@ -234,6 +257,11 @@ async function processMessage(
 ): Promise<string> {
   let response = "";
 
+  console.log(
+    `🤖 Processing message with agent for user: ${config.configurable.thread_id}`,
+  );
+  console.log(`📝 Message content: "${message}"`);
+
   try {
     const stream = await agent.stream(
       { messages: [new HumanMessage(message)] },
@@ -249,9 +277,10 @@ async function processMessage(
       }
     }
 
+    console.log(`✅ Agent response generated (${response.length} chars)`);
     return response.trim();
   } catch (error) {
-    console.error("Error processing message:", error);
+    console.error("❌ Error processing message with agent:", error);
     return "Sorry, I encountered an error while processing your request. Please try again later.";
   }
 }
@@ -277,7 +306,31 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       `Received message from ${senderAddress}: ${message.content as string}`,
     );
 
-    const { agent, config } = await initializeAgent(senderAddress);
+    // Get the conversation first
+    conversation = (await client.conversations.getConversationById(
+      message.conversationId,
+    )) as Conversation | null;
+    if (!conversation) {
+      throw new Error(
+        `Could not find conversation for ID: ${message.conversationId}`,
+      );
+    }
+
+    // Get the sender's wallet address
+    const senderInboxState = await client.preferences.inboxStateFromInboxIds([
+      senderAddress,
+    ]);
+    const senderWalletAddress =
+      senderInboxState?.[0]?.recoveryIdentifier?.identifier;
+    console.log(`📧 Sender inbox ID: ${senderAddress}`);
+    console.log(`💳 Sender wallet address: ${senderWalletAddress}`);
+
+    const { agent, config } = await initializeAgent(
+      senderAddress,
+      conversation,
+      client,
+      senderWalletAddress,
+    );
     const response = await processMessage(
       agent,
       config,
