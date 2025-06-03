@@ -9,14 +9,13 @@ interface SquabbleToolsConfig {
   conversation: Conversation;
   xmtpClient: Client;
   senderAddress: string;
-  senderFid?: string;
   agentInboxId: string;
   squabbleUrl: string;
   agentSecret: string;
 }
 
 interface LeaderboardPlayer {
-  fid: string;
+  address: string
   displayName: string;
   username: string;
   points: number;
@@ -54,7 +53,6 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
     conversation,
     xmtpClient,
     senderAddress,
-    senderFid,
     agentInboxId,
     squabbleUrl,
     agentSecret,
@@ -104,22 +102,10 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
           ?.map((state) => state?.recoveryIdentifier?.identifier)
           .filter(Boolean);
 
-        const usersFIDs = await fetchUsersByAddresses(memberAddresses!);
-        console.log("usersFIDs", usersFIDs);
-        console.log("config", config);
-
         const senderAddress = memberStates?.[0]?.recoveryIdentifier?.identifier;
-        const senderFid = await fetchUsersByAddresses([senderAddress]);
-        console.log("senderFid", senderFid);
         console.log("senderAddress", senderAddress);
 
-        console.log("body", {
-          fids: usersFIDs,
-          betAmount: betAmount || "0",
-          creatorAddress: senderAddress || "unknown",
-          creatorFid: senderFid[0].toString() || "unknown",
-          conversationId: conversation?.id,
-        });
+
 
         const response = await fetch(`${squabbleUrl}/api/agent/create-game`, {
           method: "POST",
@@ -128,10 +114,9 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
             authorization: agentSecret.trim(),
           },
           body: JSON.stringify({
-            fids: usersFIDs,
+            partecipantsAddresses: memberAddresses,
             betAmount: betAmount || "0",
             creatorAddress: senderAddress || "unknown",
-            creatorFid: senderFid[0].toString() || "unknown",
             conversationId: conversation?.id,
           }),
         });
@@ -184,7 +169,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
         const filteredLeaderboard = (
           leaderboardData as LeaderboardResponse
         ).leaderboard.map((player) => ({
-          fid: player.fid,
+          address: player.address,
           displayName: player.displayName,
           username: player.username,
           points: player.points,
