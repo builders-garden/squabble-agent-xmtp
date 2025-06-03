@@ -54,6 +54,40 @@ const {
 const XMTP_STORAGE_DIR = ".data/xmtp";
 const WALLET_STORAGE_DIR = ".data/wallet";
 
+// Squabble trigger keywords and commands
+const SQUABBLE_TRIGGERS = [
+  "/squabble",
+];
+
+/**
+ * Check if a message should trigger the Squabble agent
+ * @param message - The message content to check
+ * @returns boolean - Whether the agent should respond
+ */
+function shouldRespondToMessage(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+
+  // Check if message contains any trigger words/phrases
+  return SQUABBLE_TRIGGERS.some((trigger) =>
+    lowerMessage.includes(trigger.toLowerCase()),
+  );
+}
+
+/**
+ * Check if message mentions the bot but doesn't use proper triggers
+ * @param message - The message content to check
+ * @returns boolean - Whether to send a help message
+ */
+function shouldSendHelpHint(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+  const botMentions = ["bot", "agent", "ai", "help"];
+
+  return (
+    botMentions.some((mention) => lowerMessage.includes(mention)) &&
+    !shouldRespondToMessage(message)
+  );
+}
+
 // Global stores for memory and agent instances
 const memoryStore: Record<string, MemorySaver> = {};
 const agentStore: Record<string, Agent> = {};
@@ -302,8 +336,34 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       return;
     }
 
+    const messageContent = String(message.content);
+    console.log(`Received message from ${senderAddress}: ${messageContent}`);
+
+    // Check if message should trigger the Squabble agent
+    if (!shouldRespondToMessage(messageContent)) {
+      console.log("🚫 Message doesn't contain Squabble triggers - ignoring");
+
+      // Check if they mentioned the bot but didn't use proper triggers
+      if (shouldSendHelpHint(messageContent)) {
+        console.log("💡 Sending help hint for bot mention");
+        const conversation = (await client.conversations.getConversationById(
+          message.conversationId,
+        )) as Conversation | null;
+        if (conversation) {
+          await conversation.send(
+            "👋 Hi! I'm the Squabble game bot. Try using:\n" +
+              "• `/squabble help` - Get game rules\n" +
+              "• `/squabble start` - Create a new game\n" +
+              "• `/squabble leaderboard` - View rankings\n" +
+              "• Or just say 'start game', 'show leaderboard', etc.",
+          );
+        }
+      }
+      return;
+    }
+
     console.log(
-      `Received message from ${senderAddress}: ${message.content as string}`,
+      "✅ Message contains Squabble triggers - processing with agent",
     );
 
     // Get the conversation first
@@ -331,11 +391,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       client,
       senderWalletAddress,
     );
-    const response = await processMessage(
-      agent,
-      config,
-      String(message.content),
-    );
+    const response = await processMessage(agent, config, messageContent);
 
     // Get the conversation and send response
     conversation = (await client.conversations.getConversationById(

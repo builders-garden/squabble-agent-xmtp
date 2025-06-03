@@ -68,7 +68,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
       console.log("🔧 TOOL CALLED: squabble_help");
       try {
         const rulesPrompt =
-          "Generate a concise and engaging explanation of the Squabble game rules. Include that players take turns making moves and the goal is to capture the most territory. Also mention that players can use /squabble start to begin a new game and /squabble leaderboard to see current standings.";
+          "Generate a concise and engaging explanation of the Squabble game rules. Include that players take turns making moves and the goal is to capture the most territory. Also mention that players can use /squabble start to begin a new game and /squabble leaderboard to see current standings. Do not use formatting like ** or * when telling the commands, like \"/squabble help me\".";
         const rulesResponse = await generateResponse(rulesPrompt);
         console.log("✅ TOOL SUCCESS: squabble_help - Help message generated");
         return rulesResponse;
@@ -81,7 +81,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
   const startGameTool = new DynamicStructuredTool({
     name: "squabble_start_game",
-    description: "Start a new Squabble game with conversation members",
+    description: "Start a new Squabble game with the group members",
     schema: z.object({
       betAmount: z
         .string()
@@ -157,7 +157,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
   const leaderboardTool = new DynamicStructuredTool({
     name: "squabble_leaderboard",
-    description: "Show the current Squabble leaderboard for this conversation",
+    description: "Show the current Squabble leaderboard for this group chat",
     schema: z.object({}),
     func: async () => {
       console.log("🔧 TOOL CALLED: squabble_leaderboard");
@@ -224,7 +224,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
   const latestGameTool = new DynamicStructuredTool({
     name: "squabble_latest_game",
-    description: "Get information about the latest Squabble game",
+    description: "Get information about the latest Squabble game on this group chat",
     schema: z.object({}),
     func: async () => {
       console.log("🔧 TOOL CALLED: squabble_latest_game");
