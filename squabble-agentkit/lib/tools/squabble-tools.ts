@@ -105,8 +105,6 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
         const senderAddress = memberStates?.[0]?.recoveryIdentifier?.identifier;
         console.log("senderAddress", senderAddress);
 
-
-
         const response = await fetch(`${squabbleUrl}/api/agent/create-game`, {
           method: "POST",
           headers: {

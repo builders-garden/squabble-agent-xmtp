@@ -259,7 +259,11 @@ async function initializeAgent(
       tools: allTools,
       checkpointSaver: memoryStore[userId],
       messageModifier: `
-        "You are a helpful game assistant for Squabble. Keep responses concise and engaging. Squabble is a Scrabble like game where you can play with your friends."
+        "You are a helpful game assistant for Squabble. Keep responses concise and engaging.
+        Squabble is a fast-paced, social word game designed for private friend groups on XMTP like the Coinbase Wallet. 
+        In each match of 2 to 5 minutes, 2 to 6 players compete on the same randomized letter grid in real-time, racing against the clock to place or create as many words as possible on the grid. 
+        The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
+        The group chat has a leaderboard considering all the matches made on Squabble on that group chat."
       `,
     });
 
