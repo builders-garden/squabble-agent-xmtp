@@ -648,8 +648,14 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 async function startMessageListener(client: Client) {
   console.log("Starting message listener...");
   const stream = await client.conversations.streamAllMessages();
+  const stream2 = client.conversations.stream();
+  for await (const message of stream2) {
+    console.log("🔍 Message type:", message);
+  }
   for await (const message of stream) {
+    console.log("🔍 Message type:", message?.contentType?.typeId);
     if (message) {
+      console.log("🔍 Handling message:", message);
       await handleMessage(message, client);
     }
   }
