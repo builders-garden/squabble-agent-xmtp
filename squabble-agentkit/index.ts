@@ -59,13 +59,14 @@ const SQUABBLE_TRIGGERS = ["/squabble"];
 
 // Conversation state management
 interface ConversationState {
-  isWaitingForBet: boolean;
+  isWaitingForResponse: boolean;
+  lastCommand: string;
   messageCount: number;
   lastUpdate: number;
 }
 
 const STATE_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
-const MAX_MESSAGES = 10;
+const MAX_CONTEXT_MESSAGES = 5; // Reduced from 10 to 5 for general context
 
 // Global stores for memory, agent instances, and conversation states
 const memoryStore: Record<string, MemorySaver> = {};
@@ -95,7 +96,8 @@ function getConversationState(conversationId: string): ConversationState {
   if (!state) {
     console.log(`🆕 No existing state found, creating new one`);
     const newState = {
-      isWaitingForBet: false,
+      isWaitingForResponse: false,
+      lastCommand: "",
       messageCount: 0,
       lastUpdate: now,
     };
@@ -110,7 +112,8 @@ function getConversationState(conversationId: string): ConversationState {
       `⏰ State expired (${timeDiff}ms > ${STATE_TIMEOUT}ms), resetting`,
     );
     const newState = {
-      isWaitingForBet: false,
+      isWaitingForResponse: false,
+      lastCommand: "",
       messageCount: 0,
       lastUpdate: now,
     };
@@ -119,12 +122,13 @@ function getConversationState(conversationId: string): ConversationState {
   }
 
   // Check if message count exceeded
-  if (state.messageCount >= MAX_MESSAGES) {
+  if (state.messageCount >= MAX_CONTEXT_MESSAGES) {
     console.log(
-      `📊 Message count exceeded (${state.messageCount} >= ${MAX_MESSAGES}), resetting`,
+      `📊 Message count exceeded (${state.messageCount} >= ${MAX_CONTEXT_MESSAGES}), resetting`,
     );
     const newState = {
-      isWaitingForBet: false,
+      isWaitingForResponse: false,
+      lastCommand: "",
       messageCount: 0,
       lastUpdate: now,
     };
@@ -139,26 +143,58 @@ function getConversationState(conversationId: string): ConversationState {
 /**
  * Update conversation state
  * @param conversationId - The conversation ID
- * @param isWaitingForBet - Whether we're waiting for a bet response
+ * @param isWaitingForResponse - Whether we're waiting for a response
  */
 function updateConversationState(
   conversationId: string,
-  isWaitingForBet: boolean,
+  isWaitingForResponse: boolean,
 ) {
   const currentState = conversationStates[conversationId] || {
-    isWaitingForBet: false,
+    isWaitingForResponse: false,
+    lastCommand: "",
     messageCount: 0,
     lastUpdate: Date.now(),
   };
 
   conversationStates[conversationId] = {
-    isWaitingForBet,
+    isWaitingForResponse,
+    lastCommand: currentState.lastCommand,
     messageCount: currentState.messageCount + 1,
     lastUpdate: Date.now(),
   };
 
   console.log(
-    `🔄 State updated for ${conversationId}: waiting=${isWaitingForBet}, count=${conversationStates[conversationId].messageCount}`,
+    `🔄 State updated for ${conversationId}: waiting=${isWaitingForResponse}, count=${conversationStates[conversationId].messageCount}`,
+  );
+}
+
+/**
+ * Set conversation state with a specific command
+ * @param conversationId - The conversation ID
+ * @param isWaitingForResponse - Whether we're waiting for a response
+ * @param command - The command that initiated this state
+ */
+function setConversationState(
+  conversationId: string,
+  isWaitingForResponse: boolean,
+  command: string = "",
+) {
+  const currentState = conversationStates[conversationId] || {
+    isWaitingForResponse: false,
+    lastCommand: "",
+    messageCount: 0,
+    lastUpdate: Date.now(),
+  };
+
+  conversationStates[conversationId] = {
+    isWaitingForResponse,
+    lastCommand: command,
+    messageCount: currentState.messageCount + 1,
+    lastUpdate: Date.now(),
+  };
+
+  console.log(
+    `🔄 State set for ${conversationId}: waiting=${isWaitingForResponse}, command="${command}", count=${conversationStates[conversationId].messageCount}`,
   );
 }
 
@@ -175,8 +211,8 @@ function shouldRespondToMessage(
   const lowerMessage = message.toLowerCase().trim();
   const state = getConversationState(conversationId);
 
-  // If we're waiting for a bet response, process any message
-  if (state.isWaitingForBet) {
+  // If we're waiting for a response, process any message
+  if (state.isWaitingForResponse) {
     console.log(`✅ Processing message in waiting state: "${message}"`);
     return true;
   }
@@ -469,9 +505,9 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     const state = getConversationState(conversation.id);
     console.log(`📊 Current state for ${conversation.id}:`, state);
 
-    // Check if we're waiting for a bet response
-    if (state.isWaitingForBet) {
-      console.log(`💰 Processing bet response: "${messageContent}"`);
+    // Check if we're waiting for a response
+    if (state.isWaitingForResponse) {
+      console.log(`📝 Processing response: "${messageContent}"`);
 
       // Check if user typed a new trigger command - if so, reset state and process normally
       const hasNewTrigger = SQUABBLE_TRIGGERS.some((trigger) =>
@@ -480,39 +516,18 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
       if (hasNewTrigger) {
         console.log(
-          `🔄 New trigger detected while waiting for bet - resetting state`,
+          `🔄 New trigger detected while waiting for response - resetting state`,
         );
         updateConversationState(conversation.id, false);
         // Continue processing the new command normally (don't return here)
       } else {
-        // Parse bet amount from message
-        const lowerMessage = messageContent.toLowerCase().trim();
-        let betAmount = "0";
-
-        if (
-          lowerMessage.includes("no bet") ||
-          lowerMessage.includes("no amount") ||
-          lowerMessage.includes("no") ||
-          lowerMessage === "0"
-        ) {
-          betAmount = "0";
-        } else {
-          // Try to extract number from message
-          const numberMatch = messageContent.match(/\d+(\.\d+)?/);
-          if (numberMatch) {
-            betAmount = numberMatch[0];
-          } else {
-            betAmount = messageContent; // Let the agent handle invalid input
-          }
-        }
-
         // Get the sender's wallet address
         const senderInboxState =
           await client.preferences.inboxStateFromInboxIds([senderAddress]);
         const senderWalletAddress =
           senderInboxState?.[0]?.recoveryIdentifier?.identifier;
 
-        // Initialize agent and process the bet amount
+        // Initialize agent and process the response
         const { agent, config } = await initializeAgent(
           senderAddress,
           conversation,
@@ -520,41 +535,24 @@ async function handleMessage(message: DecodedMessage, client: Client) {
           senderWalletAddress,
         );
 
-        // Create a start game command with the bet amount
-        const startGameCommand = `/squabble start game with bet ${betAmount}`;
-        const response = await processMessage(agent, config, startGameCommand);
+        const response = await processMessage(agent, config, messageContent);
 
-        // Check if the response indicates success or error
+        // Check if the agent's response is asking for a bet amount
         const responseLower = response.toLowerCase();
-        const isError =
-          responseLower.includes("error") ||
-          responseLower.includes("issue") ||
-          responseLower.includes("failed") ||
-          responseLower.includes("try again") ||
-          responseLower.includes("problem");
-
-        const isStillAskingForBet =
-          responseLower.includes("bet") &&
-          (responseLower.includes("how much") ||
-            responseLower.includes("amount") ||
-            responseLower.includes("like"));
-
-        if (isError || isStillAskingForBet) {
+        if (
+          responseLower.includes("bet amount") ||
+          responseLower.includes("provide a bet") ||
+          responseLower.includes("how much") ||
+          (responseLower.includes("bet") && responseLower.includes("game"))
+        ) {
           console.log(
-            "🔄 Game creation failed or agent asking for bet again - keeping waiting state",
+            "🎰 Agent is asking for bet amount - setting waiting state",
           );
-          // Don't clear the state, keep waiting for another response
           updateConversationState(conversation.id, true);
-        } else {
-          console.log(
-            "✅ Game creation appears successful - clearing waiting state",
-          );
-          // Clear the waiting state only on success
-          updateConversationState(conversation.id, false);
         }
 
         await conversation.send(response);
-        console.log(`✅ Sent bet response to ${senderAddress}`);
+        console.log(`✅ Sent response to ${senderAddress}: ${response}`);
         return;
       }
     }
@@ -590,7 +588,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       !lowerMessage.includes("bet")
     ) {
       console.log("🎮 Start game command detected - asking for bet amount");
-      updateConversationState(conversation.id, true);
+      setConversationState(conversation.id, true, "/squabble start");
       await conversation.send(
         "🎮 How much would you like to bet for this game? You can enter an amount or say 'no bet' if you prefer.",
       );
@@ -614,16 +612,20 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     );
     const response = await processMessage(agent, config, messageContent);
 
-    // Check if the agent's response is asking for a bet amount
+    // Check if the agent's response is asking for more information
     const responseLower = response.toLowerCase();
     if (
       responseLower.includes("bet amount") ||
       responseLower.includes("provide a bet") ||
       responseLower.includes("how much") ||
+      responseLower.includes("please provide") ||
+      responseLower.includes("what would you like") ||
       (responseLower.includes("bet") && responseLower.includes("game"))
     ) {
-      console.log("🎰 Agent is asking for bet amount - setting waiting state");
-      updateConversationState(conversation.id, true);
+      console.log(
+        "🎰 Agent is asking for more information - setting waiting state",
+      );
+      setConversationState(conversation.id, true, messageContent);
     }
 
     await conversation.send(response);
