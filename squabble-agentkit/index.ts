@@ -609,41 +609,45 @@ async function startMessageListener(client: Client) {
   console.log("Starting message listener...");
   const messageStream = await client.conversations.streamAllMessages();
 
-  const newGroupStream = client.conversations.stream((error, conversation) => {
-    try {
-      if (error) {
-        console.log("🔍 Error in conversation stream:", error);
-        return;
-      }
+  const newGroupStream = client.conversations.stream(
+    async (error, conversation) => {
+      try {
+        if (error) {
+          console.log("🔍 Error in conversation stream:", error);
+          return;
+        }
 
-      if (!conversation) {
-        return;
-      }
+        if (!conversation) {
+          return;
+        }
 
-      // Check if this is a new Group (agent was added to a group)
-      if (conversation.constructor.name === "Group") {
-        // Send the message immediately
-        conversation
-          .send(
-            `Squabble is a fast-paced, social word game designed for friend group chats on XMTP. 
+        // Check if this is a new Group (agent was added to a group)
+        if (conversation.constructor.name === "Group") {
+          //await for 6 seconds
+          await new Promise((resolve) => setTimeout(resolve, 6000));
+          // Send the message immediately
+          conversation
+            .send(
+              `Squabble is a fast-paced, social word game designed for friend group chats on XMTP. 
 
 In each match, 2 to 6 players compete on the same randomized letter grid in real-time, racing against the clock to place or create as many words as possible on the grid. 
 
 The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
 
 The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use /squabble to invoke the squabble agent!`,
-          )
-          .then(() => {
-            console.log("✅ Welcome message sent to new group");
-          })
-          .catch((error: any) => {
-            console.error("❌ Failed to send welcome message:", error);
-          });
+            )
+            .then(() => {
+              console.log("✅ Welcome message sent to new group");
+            })
+            .catch((error: any) => {
+              console.error("❌ Failed to send welcome message:", error);
+            });
+        }
+      } catch (error) {
+        console.log("🔍 Error in conversation stream callback:", error);
       }
-    } catch (error) {
-      console.log("🔍 Error in conversation stream callback:", error);
-    }
-  });
+    },
+  );
 
   console.log("🔍 Conversation stream started with callback");
 
