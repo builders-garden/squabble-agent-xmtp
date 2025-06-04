@@ -109,7 +109,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            authorization: agentSecret.trim(),
+            "x-agent-secret": agentSecret.trim(),
           },
           body: JSON.stringify({
             betAmount: betAmount || "0",
@@ -149,7 +149,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
-              Authorization: agentSecret.trim(),
+              "x-agent-secret": agentSecret.trim(),
             },
           },
         );
@@ -214,7 +214,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            authorization: agentSecret.trim(),
+            "x-agent-secret": agentSecret.trim(),
           },
         });
 
