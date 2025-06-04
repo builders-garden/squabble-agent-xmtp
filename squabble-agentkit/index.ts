@@ -220,7 +220,7 @@ function shouldRespondToMessage(
  */
 function shouldSendHelpHint(message: string): boolean {
   const lowerMessage = message.toLowerCase().trim();
-  const botMentions = ["bot", "agent", "ai", "help"];
+  const botMentions = ["/bot", "/agent", "/ai", "/help"];
 
   return (
     botMentions.some((mention) => lowerMessage.includes(mention)) &&
@@ -530,11 +530,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       // Check if they mentioned the bot but didn't use proper triggers
       if (shouldSendHelpHint(messageContent)) {
         await conversation.send(
-          "👋 Hi! I'm the Squabble game bot. Try using:\n" +
-            "• `/squabble help` - Get game rules\n" +
-            "• `/squabble start` - Create a new game\n" +
-            "• `/squabble leaderboard` - View rankings\n" +
-            "• Or just say 'start game', 'show leaderboard', etc.",
+          "👋 Hi! I'm the Squabble game agent. You asked for help! Try to invoke the agent with /squabble\n",
         );
       }
       return;
