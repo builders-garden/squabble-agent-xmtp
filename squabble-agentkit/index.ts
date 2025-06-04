@@ -24,6 +24,7 @@ import {
   type DecodedMessage,
   type XmtpEnv,
 } from "@xmtp/node-sdk";
+import { setupApiServer } from "./api";
 import { createSquabbleTools } from "./lib/tools/squabble-tools";
 
 const {
@@ -36,7 +37,6 @@ const {
   OPENAI_API_KEY,
   SQUABBLE_URL,
   AGENT_SECRET,
-  NEYNAR_API_KEY,
 } = validateEnvironment([
   "WALLET_KEY",
   "ENCRYPTION_KEY",
@@ -47,7 +47,6 @@ const {
   "OPENAI_API_KEY",
   "SQUABBLE_URL",
   "AGENT_SECRET",
-  "NEYNAR_API_KEY",
 ]);
 
 // Storage constants
@@ -668,6 +667,11 @@ async function main(): Promise<void> {
   ensureLocalStorage();
 
   const xmtpClient = await initializeXmtpClient();
+
+  // Start API server
+  setupApiServer(xmtpClient);
+
+  // Start XMTP message listener
   await startMessageListener(xmtpClient);
 }
 
