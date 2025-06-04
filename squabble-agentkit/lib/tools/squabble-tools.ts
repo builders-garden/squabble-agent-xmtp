@@ -15,7 +15,7 @@ interface SquabbleToolsConfig {
 }
 
 interface LeaderboardPlayer {
-  address: string
+  address: string;
   displayName: string;
   username: string;
   points: number;
@@ -66,7 +66,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
       console.log("🔧 TOOL CALLED: squabble_help");
       try {
         const rulesPrompt =
-          "Generate a concise and engaging explanation of the Squabble game rules. Include that players take turns making moves and the goal is to capture the most territory. Also mention that players can use /squabble start to begin a new game and /squabble leaderboard to see current standings. Do not use formatting like ** or * when telling the commands, like \"/squabble help me\".";
+          'Generate a concise and engaging explanation of the Squabble game rules. Include that players take turns making moves and the goal is to capture the most territory. Also mention that players can use /squabble start to begin a new game and /squabble leaderboard to see current standings. Do not use formatting like ** or * when telling the commands, like "/squabble help me".';
         const rulesResponse = await generateResponse(rulesPrompt);
         console.log("✅ TOOL SUCCESS: squabble_help - Help message generated");
         return rulesResponse;
@@ -124,11 +124,17 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
         const gameData = await response.json();
         const gameUrl = `${squabbleUrl}/games/${(gameData as GameCreationResponse).id}`;
         const gameMessage = `🎮 Game created! You can play here: ${gameUrl}\nGood luck! 🍀`;
+
+        // Send the message directly to the conversation
+        await conversation.send(gameMessage);
+
         console.log(
           "✅ TOOL SUCCESS: squabble_start_game - Game created with ID:",
           (gameData as GameCreationResponse).id,
         );
-        return gameMessage;
+
+        // Return a message for the AI to acknowledge (won't be sent to users)
+        return "Game created and message sent to the group.";
       } catch (error) {
         console.error("❌ TOOL ERROR: squabble_start_game -", error);
         return "❌ Failed to create game. Please try again.";
@@ -195,6 +201,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
           filteredLeaderboard.length,
           "players",
         );
+
         return leaderboardMessage;
       } catch (error) {
         console.error("❌ TOOL ERROR: squabble_leaderboard -", error);
@@ -205,7 +212,8 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
   const latestGameTool = new DynamicStructuredTool({
     name: "squabble_latest_game",
-    description: "Get information about the latest Squabble game on this group chat",
+    description:
+      "Get information about the latest Squabble game on this group chat",
     schema: z.object({}),
     func: async () => {
       console.log("🔧 TOOL CALLED: squabble_latest_game");
@@ -225,9 +233,11 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
         const gameData = await response.json();
         const gameUrl = `${squabbleUrl}/games/${(gameData as GameCreationResponse).id}`;
         const gameMessage = `🎮 Latest Game:\nYou can view it here: ${gameUrl}`;
+
         console.log(
           "✅ TOOL SUCCESS: squabble_latest_game - Latest game info retrieved",
         );
+
         return gameMessage;
       } catch (error) {
         console.error("❌ TOOL ERROR: squabble_latest_game -", error);
