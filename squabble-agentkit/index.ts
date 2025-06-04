@@ -446,6 +446,13 @@ async function processMessage(
       }
     }
 
+    // Check if the response contains the signal to reset conversation state
+    if (response.includes("RESET_CONVERSATION_STATE")) {
+      console.log("🎮 Game creation detected - will reset conversation state");
+      // Return empty string since game message was already sent directly
+      return "";
+    }
+
     console.log(`✅ Agent response generated (${response.length} chars)`);
     return response.trim();
   } catch (error) {
@@ -516,6 +523,13 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
         const response = await processMessage(agent, config, messageContent);
 
+        // Check if this was a game creation (empty response means game was created and sent directly)
+        if (response === "" && messageContent.toLowerCase().includes("start")) {
+          console.log("🎮 Game created - resetting conversation state");
+          updateConversationState(conversation.id, false);
+          return;
+        }
+
         // Always set waiting state after processing any trigger to maintain context
         setConversationState(conversation.id, true, messageContent);
 
@@ -563,6 +577,13 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       senderWalletAddress,
     );
     const response = await processMessage(agent, config, messageContent);
+
+    // Check if this was a game creation (empty response means game was created and sent directly)
+    if (response === "" && messageContent.toLowerCase().includes("start")) {
+      console.log("🎮 Game created - resetting conversation state");
+      updateConversationState(conversation.id, false);
+      return;
+    }
 
     // Always set waiting state after processing any trigger to maintain context
     setConversationState(conversation.id, true, messageContent);

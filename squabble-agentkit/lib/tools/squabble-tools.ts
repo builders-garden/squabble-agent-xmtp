@@ -133,8 +133,8 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
           (gameData as GameCreationResponse).id,
         );
 
-        // Return a message for the AI to acknowledge (won't be sent to users)
-        return "Game created and message sent to the group.";
+        // Return a special signal to reset conversation state after game creation
+        return "RESET_CONVERSATION_STATE";
       } catch (error) {
         console.error("❌ TOOL ERROR: squabble_start_game -", error);
         return "❌ Failed to create game. Please try again.";
