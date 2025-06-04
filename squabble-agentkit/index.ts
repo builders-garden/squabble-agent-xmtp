@@ -90,11 +90,8 @@ function getConversationState(conversationId: string): ConversationState {
   const state = conversationStates[conversationId];
   const now = Date.now();
 
-  console.log(`🔍 Checking state for ${conversationId}:`, state);
-
   // Clear state if it's expired
   if (!state) {
-    console.log(`🆕 No existing state found, creating new one`);
     const newState = {
       isWaitingForResponse: false,
       lastCommand: "",
@@ -108,9 +105,7 @@ function getConversationState(conversationId: string): ConversationState {
   // Check if state is expired
   const timeDiff = now - state.lastUpdate;
   if (timeDiff > STATE_TIMEOUT) {
-    console.log(
-      `⏰ State expired (${timeDiff}ms > ${STATE_TIMEOUT}ms), resetting`,
-    );
+    console.log(`⏰ State expired, resetting`);
     const newState = {
       isWaitingForResponse: false,
       lastCommand: "",
@@ -123,9 +118,7 @@ function getConversationState(conversationId: string): ConversationState {
 
   // Check if message count exceeded
   if (state.messageCount >= MAX_CONTEXT_MESSAGES) {
-    console.log(
-      `📊 Message count exceeded (${state.messageCount} >= ${MAX_CONTEXT_MESSAGES}), resetting`,
-    );
+    console.log(`📊 Message count exceeded, resetting`);
     const newState = {
       isWaitingForResponse: false,
       lastCommand: "",
@@ -136,7 +129,6 @@ function getConversationState(conversationId: string): ConversationState {
     return newState;
   }
 
-  console.log(`✅ State is valid, returning existing state`);
   return state;
 }
 
@@ -162,10 +154,6 @@ function updateConversationState(
     messageCount: currentState.messageCount + 1,
     lastUpdate: Date.now(),
   };
-
-  console.log(
-    `🔄 State updated for ${conversationId}: waiting=${isWaitingForResponse}, count=${conversationStates[conversationId].messageCount}`,
-  );
 }
 
 /**
@@ -192,10 +180,6 @@ function setConversationState(
     messageCount: currentState.messageCount + 1,
     lastUpdate: Date.now(),
   };
-
-  console.log(
-    `🔄 State set for ${conversationId}: waiting=${isWaitingForResponse}, command="${command}", count=${conversationStates[conversationId].messageCount}`,
-  );
 }
 
 /**
@@ -488,9 +472,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     }
 
     const messageContent = String(message.content);
-    console.log(
-      `📨 Received message from ${senderAddress}: "${messageContent}"`,
-    );
+    console.log(`📨 Message from ${senderAddress}: "${messageContent}"`);
 
     // Get the conversation first
     conversation = (await client.conversations.getConversationById(
@@ -503,11 +485,10 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     }
 
     const state = getConversationState(conversation.id);
-    console.log(`📊 Current state for ${conversation.id}:`, state);
 
     // Check if we're waiting for a response
     if (state.isWaitingForResponse) {
-      console.log(`📝 Processing response: "${messageContent}"`);
+      console.log(`📝 Processing response in waiting state`);
 
       // Check if user typed a new trigger command - if so, reset state and process normally
       const hasNewTrigger = SQUABBLE_TRIGGERS.some((trigger) =>
@@ -515,9 +496,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       );
 
       if (hasNewTrigger) {
-        console.log(
-          `🔄 New trigger detected while waiting for response - resetting state`,
-        );
+        console.log(`🔄 New trigger detected - resetting state`);
         updateConversationState(conversation.id, false);
         // Continue processing the new command normally (don't return here)
       } else {
@@ -559,13 +538,8 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
     // Check if message should trigger the Squabble agent
     if (!shouldRespondToMessage(messageContent, conversation.id)) {
-      console.log(
-        "🚫 Message doesn't contain Squabble triggers and not in waiting state - ignoring",
-      );
-
       // Check if they mentioned the bot but didn't use proper triggers
       if (shouldSendHelpHint(messageContent)) {
-        console.log("💡 Sending help hint for bot mention");
         await conversation.send(
           "👋 Hi! I'm the Squabble game bot. Try using:\n" +
             "• `/squabble help` - Get game rules\n" +
@@ -577,17 +551,12 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       return;
     }
 
-    console.log(
-      "✅ Message contains Squabble triggers - processing with agent",
-    );
-
     // Check if this is a start game command that should prompt for bet
     const lowerMessage = messageContent.toLowerCase();
     if (
       lowerMessage.includes("/squabble start") &&
       !lowerMessage.includes("bet")
     ) {
-      console.log("🎮 Start game command detected - asking for bet amount");
       setConversationState(conversation.id, true, "/squabble start");
       await conversation.send(
         "🎮 How much would you like to bet for this game? You can enter an amount or say 'no bet' if you prefer.",
@@ -622,14 +591,11 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       responseLower.includes("what would you like") ||
       (responseLower.includes("bet") && responseLower.includes("game"))
     ) {
-      console.log(
-        "🎰 Agent is asking for more information - setting waiting state",
-      );
       setConversationState(conversation.id, true, messageContent);
     }
 
     await conversation.send(response);
-    console.log(`✅ Sent response to ${senderAddress}: ${response}`);
+    console.log(`✅ Response sent to ${senderAddress}`);
   } catch (error) {
     console.error("❌ Error handling message:", error);
     if (conversation) {
@@ -647,15 +613,49 @@ async function handleMessage(message: DecodedMessage, client: Client) {
  */
 async function startMessageListener(client: Client) {
   console.log("Starting message listener...");
-  const stream = await client.conversations.streamAllMessages();
-  const stream2 = client.conversations.stream();
-  for await (const message of stream2) {
-    console.log("🔍 Message type:", message);
-  }
-  for await (const message of stream) {
-    console.log("🔍 Message type:", message?.contentType?.typeId);
+  const messageStream = await client.conversations.streamAllMessages();
+
+  const newGroupStream = client.conversations.stream((error, conversation) => {
+    try {
+      if (error) {
+        console.log("🔍 Error in conversation stream:", error);
+        return;
+      }
+
+      if (!conversation) {
+        return;
+      }
+
+      // Check if this is a new Group (agent was added to a group)
+      if (conversation.constructor.name === "Group") {
+        // Send the message immediately
+        conversation
+          .send(
+            `Squabble is a fast-paced, social word game designed for friend group chats on XMTP. 
+
+In each match, 2 to 6 players compete on the same randomized letter grid in real-time, racing against the clock to place or create as many words as possible on the grid. 
+
+The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
+
+The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use /squabble to invoke the squabble agent!`,
+          )
+          .then(() => {
+            console.log("✅ Welcome message sent to new group");
+          })
+          .catch((error: any) => {
+            console.error("❌ Failed to send welcome message:", error);
+          });
+      }
+    } catch (error) {
+      console.log("🔍 Error in conversation stream callback:", error);
+    }
+  });
+
+  console.log("🔍 Conversation stream started with callback");
+
+  // Now the main message stream can run without being blocked
+  for await (const message of messageStream) {
     if (message) {
-      console.log("🔍 Handling message:", message);
       await handleMessage(message, client);
     }
   }
