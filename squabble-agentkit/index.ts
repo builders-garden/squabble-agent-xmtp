@@ -516,22 +516,11 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
         const response = await processMessage(agent, config, messageContent);
 
-        // Check if the agent's response is asking for a bet amount
-        const responseLower = response.toLowerCase();
-        if (
-          responseLower.includes("bet amount") ||
-          responseLower.includes("provide a bet") ||
-          responseLower.includes("how much") ||
-          (responseLower.includes("bet") && responseLower.includes("game"))
-        ) {
-          console.log(
-            "🎰 Agent is asking for bet amount - setting waiting state",
-          );
-          updateConversationState(conversation.id, true);
-        }
+        // Always set waiting state after processing any trigger to maintain context
+        setConversationState(conversation.id, true, messageContent);
 
         await conversation.send(response);
-        console.log(`✅ Sent response to ${senderAddress}: ${response}`);
+        console.log(`✅ Response sent to ${senderAddress}`);
         return;
       }
     }
@@ -570,8 +559,6 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     ]);
     const senderWalletAddress =
       senderInboxState?.[0]?.recoveryIdentifier?.identifier;
-    console.log(`📧 Sender inbox ID: ${senderAddress}`);
-    console.log(`💳 Sender wallet address: ${senderWalletAddress}`);
 
     const { agent, config } = await initializeAgent(
       senderAddress,
@@ -581,18 +568,8 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     );
     const response = await processMessage(agent, config, messageContent);
 
-    // Check if the agent's response is asking for more information
-    const responseLower = response.toLowerCase();
-    if (
-      responseLower.includes("bet amount") ||
-      responseLower.includes("provide a bet") ||
-      responseLower.includes("how much") ||
-      responseLower.includes("please provide") ||
-      responseLower.includes("what would you like") ||
-      (responseLower.includes("bet") && responseLower.includes("game"))
-    ) {
-      setConversationState(conversation.id, true, messageContent);
-    }
+    // Always set waiting state after processing any trigger to maintain context
+    setConversationState(conversation.id, true, messageContent);
 
     await conversation.send(response);
     console.log(`✅ Response sent to ${senderAddress}`);
