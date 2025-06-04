@@ -112,9 +112,7 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
             authorization: agentSecret.trim(),
           },
           body: JSON.stringify({
-            partecipantsAddresses: memberAddresses,
             betAmount: betAmount || "0",
-            creatorAddress: senderAddress || "unknown",
             conversationId: conversation?.id,
           }),
         });
