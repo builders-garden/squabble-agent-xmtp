@@ -100,19 +100,37 @@ function extractMessageContent(message: DecodedMessage): string {
   if (message.contentType?.typeId === "reply") {
     // Reply messages typically have a structure like { content: "actual message", reference: {...} }
     const replyContent = message.content as any;
-    if (
-      replyContent &&
-      typeof replyContent === "object" &&
-      replyContent.content
-    ) {
-      return String(replyContent.content);
+    console.log(`🔍 Reply content debug:`, replyContent);
+
+    if (replyContent && typeof replyContent === "object") {
+      // Try different possible property names for the actual content
+      if (replyContent.content) {
+        return String(replyContent.content);
+      }
+      if (replyContent.text) {
+        return String(replyContent.text);
+      }
+      if (replyContent.message) {
+        return String(replyContent.message);
+      }
     }
+
+    // If content is null/undefined, return empty string to avoid errors
+    if (replyContent === null || replyContent === undefined) {
+      console.log(`⚠️ Reply content is null/undefined`);
+      return "";
+    }
+
     // Fallback to stringifying the whole content if structure is different
     return JSON.stringify(replyContent);
   }
 
   // Handle regular text messages
-  return String(message.content);
+  const content = message.content;
+  if (content === null || content === undefined) {
+    return "";
+  }
+  return String(content);
 }
 
 /**
@@ -126,6 +144,13 @@ function shouldRespondToMessage(
   agentInboxId: string,
 ): boolean {
   const messageContent = extractMessageContent(message);
+
+  // Safety check for empty content
+  if (!messageContent || messageContent.trim() === "") {
+    console.log(`⚠️ Empty message content, skipping`);
+    return false;
+  }
+
   const lowerMessage = messageContent.toLowerCase().trim();
 
   // If this is a reply to the agent, always process it
