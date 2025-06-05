@@ -56,21 +56,9 @@ const WALLET_STORAGE_DIR = ".data/wallet";
 // Squabble trigger keywords and commands
 const SQUABBLE_TRIGGERS = ["@squabble", "@squabble.base.eth"];
 
-// Conversation state management
-interface ConversationState {
-  isWaitingForResponse: boolean;
-  lastCommand: string;
-  messageCount: number;
-  lastUpdate: number;
-}
-
-const STATE_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
-const MAX_CONTEXT_MESSAGES = 5; // Reduced from 10 to 5 for general context
-
-// Global stores for memory, agent instances, and conversation states
+// Global stores for memory and agent instances
 const memoryStore: Record<string, MemorySaver> = {};
 const agentStore: Record<string, Agent> = {};
-const conversationStates: Record<string, ConversationState> = {};
 
 interface AgentConfig {
   configurable: {
@@ -81,135 +69,52 @@ interface AgentConfig {
 type Agent = ReturnType<typeof createReactAgent>;
 
 /**
- * Get conversation state with automatic cleanup
- * @param conversationId - The conversation ID
- * @returns The current conversation state
+ * Check if a message is a reply to the agent
+ * @param message - The decoded XMTP message
+ * @param agentInboxId - The agent's inbox ID
+ * @returns boolean - Whether the message is a reply to the agent
  */
-function getConversationState(conversationId: string): ConversationState {
-  const state = conversationStates[conversationId];
-  const now = Date.now();
-
-  // Clear state if it's expired
-  if (!state) {
-    const newState = {
-      isWaitingForResponse: false,
-      lastCommand: "",
-      messageCount: 0,
-      lastUpdate: now,
-    };
-    conversationStates[conversationId] = newState;
-    return newState;
+function isReplyToAgent(
+  message: DecodedMessage,
+  agentInboxId: string,
+): boolean {
+  // Check if the message is a reply type
+  if (message.contentType?.typeId === "reply") {
+    console.log(`📝 Message is a reply type`);
+    return true;
   }
-
-  // Check if state is expired
-  const timeDiff = now - state.lastUpdate;
-  if (timeDiff > STATE_TIMEOUT) {
-    console.log(`⏰ State expired, resetting`);
-    const newState = {
-      isWaitingForResponse: false,
-      lastCommand: "",
-      messageCount: 0,
-      lastUpdate: now,
-    };
-    conversationStates[conversationId] = newState;
-    return newState;
-  }
-
-  // Check if message count exceeded
-  if (state.messageCount >= MAX_CONTEXT_MESSAGES) {
-    console.log(`📊 Message count exceeded, resetting`);
-    const newState = {
-      isWaitingForResponse: false,
-      lastCommand: "",
-      messageCount: 0,
-      lastUpdate: now,
-    };
-    conversationStates[conversationId] = newState;
-    return newState;
-  }
-
-  return state;
-}
-
-/**
- * Update conversation state
- * @param conversationId - The conversation ID
- * @param isWaitingForResponse - Whether we're waiting for a response
- */
-function updateConversationState(
-  conversationId: string,
-  isWaitingForResponse: boolean,
-) {
-  const currentState = conversationStates[conversationId] || {
-    isWaitingForResponse: false,
-    lastCommand: "",
-    messageCount: 0,
-    lastUpdate: Date.now(),
-  };
-
-  conversationStates[conversationId] = {
-    isWaitingForResponse,
-    lastCommand: currentState.lastCommand,
-    messageCount: currentState.messageCount + 1,
-    lastUpdate: Date.now(),
-  };
-}
-
-/**
- * Set conversation state with a specific command
- * @param conversationId - The conversation ID
- * @param isWaitingForResponse - Whether we're waiting for a response
- * @param command - The command that initiated this state
- */
-function setConversationState(
-  conversationId: string,
-  isWaitingForResponse: boolean,
-  command: string = "",
-) {
-  const currentState = conversationStates[conversationId] || {
-    isWaitingForResponse: false,
-    lastCommand: "",
-    messageCount: 0,
-    lastUpdate: Date.now(),
-  };
-
-  conversationStates[conversationId] = {
-    isWaitingForResponse,
-    lastCommand: command,
-    messageCount: currentState.messageCount + 1,
-    lastUpdate: Date.now(),
-  };
+  return false;
 }
 
 /**
  * Check if a message should trigger the Squabble agent
- * @param message - The message content to check
- * @param conversationId - The conversation ID to check state for
+ * @param message - The decoded XMTP message
+ * @param agentInboxId - The agent's inbox ID
  * @returns boolean - Whether the agent should respond
  */
 function shouldRespondToMessage(
-  message: string,
-  conversationId: string,
+  message: DecodedMessage,
+  agentInboxId: string,
 ): boolean {
-  const lowerMessage = message.toLowerCase().trim();
-  const state = getConversationState(conversationId);
+  const messageContent = String(message.content);
+  const lowerMessage = messageContent.toLowerCase().trim();
 
-  // If we're waiting for a response, process any message
-  if (state.isWaitingForResponse) {
-    console.log(`✅ Processing message in waiting state: "${message}"`);
+  // If this is a reply to the agent, always process it
+  if (isReplyToAgent(message, agentInboxId)) {
+    console.log(`✅ Processing reply to agent: "${messageContent}"`);
     return true;
   }
 
   // Check if message contains any trigger words/phrases
-  const hasTriger = SQUABBLE_TRIGGERS.some((trigger) =>
+  const hasTrigger = SQUABBLE_TRIGGERS.some((trigger) =>
     lowerMessage.includes(trigger.toLowerCase()),
   );
 
-  if (hasTriger) {
-    console.log(`✅ Message contains trigger: "${message}"`);
+  if (hasTrigger) {
+    console.log(`✅ Message contains trigger: "${messageContent}"`);
   }
 
-  return hasTriger;
+  return hasTrigger;
 }
 
 /**
@@ -490,56 +395,8 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       );
     }
 
-    const state = getConversationState(conversation.id);
-
-    // Check if we're waiting for a response
-    if (state.isWaitingForResponse) {
-      console.log(`📝 Processing response in waiting state`);
-
-      // Check if user typed a new trigger command - if so, reset state and process normally
-      const hasNewTrigger = SQUABBLE_TRIGGERS.some((trigger) =>
-        messageContent.toLowerCase().includes(trigger.toLowerCase()),
-      );
-
-      if (hasNewTrigger) {
-        console.log(`🔄 New trigger detected - resetting state`);
-        updateConversationState(conversation.id, false);
-        // Continue processing the new command normally (don't return here)
-      } else {
-        // Get the sender's wallet address
-        const senderInboxState =
-          await client.preferences.inboxStateFromInboxIds([senderAddress]);
-        const senderWalletAddress =
-          senderInboxState?.[0]?.recoveryIdentifier?.identifier;
-
-        // Initialize agent and process the response
-        const { agent, config } = await initializeAgent(
-          senderAddress,
-          conversation,
-          client,
-          senderWalletAddress,
-        );
-
-        const response = await processMessage(agent, config, messageContent);
-
-        // Check if this was a game creation (empty response means game was created and sent directly)
-        if (response === "" && messageContent.toLowerCase().includes("start")) {
-          console.log("🎮 Game created - resetting conversation state");
-          updateConversationState(conversation.id, false);
-          return;
-        }
-
-        // Always set waiting state after processing any trigger to maintain context
-        setConversationState(conversation.id, true, messageContent);
-
-        await conversation.send(response);
-        console.log(`✅ Response sent to ${senderAddress}`);
-        return;
-      }
-    }
-
     // Check if message should trigger the Squabble agent
-    if (!shouldRespondToMessage(messageContent, conversation.id)) {
+    if (!shouldRespondToMessage(message, client.inboxId)) {
       // Check if they mentioned the bot but didn't use proper triggers
       if (shouldSendHelpHint(messageContent)) {
         await conversation.send(
@@ -551,15 +408,14 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
     // Check if this is a start game command that should prompt for bet
     const lowerMessage = messageContent.toLowerCase();
+    const isReply = isReplyToAgent(message, client.inboxId);
+
     if (
+      !isReply &&
       (lowerMessage.includes("@squabble.base.eth start") ||
         lowerMessage.includes("@squabble start")) &&
       !lowerMessage.includes("bet")
     ) {
-      const command = lowerMessage.includes("@squabble.base.eth start")
-        ? "@squabble.base.eth start"
-        : "@squabble start";
-      setConversationState(conversation.id, true, command);
       await conversation.send(
         "🎮 How much would you like to bet for this game? You can enter an amount or say 'no bet' if you prefer.",
       );
@@ -583,13 +439,9 @@ async function handleMessage(message: DecodedMessage, client: Client) {
 
     // Check if this was a game creation (empty response means game was created and sent directly)
     if (response === "" && messageContent.toLowerCase().includes("start")) {
-      console.log("🎮 Game created - resetting conversation state");
-      updateConversationState(conversation.id, false);
+      console.log("🎮 Game created - no additional response needed");
       return;
     }
-
-    // Always set waiting state after processing any trigger to maintain context
-    setConversationState(conversation.id, true, messageContent);
 
     await conversation.send(response);
     console.log(`✅ Response sent to ${senderAddress}`);
