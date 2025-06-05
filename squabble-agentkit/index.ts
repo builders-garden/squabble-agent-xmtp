@@ -637,7 +637,7 @@ In each match, 2 to 6 players compete on the same randomized letter grid in real
 
 The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
 
-The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use @squabble.base.eth or just @squabbleto invoke the squabble agent!`,
+The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use @squabble.base.eth or just @squabble to invoke the squabble agent!`,
             )
             .then(() => {
               console.log("✅ Welcome message sent to new group");
