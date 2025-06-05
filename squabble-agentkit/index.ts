@@ -619,11 +619,20 @@ async function startMessageListener(client: Client) {
         if (!conversation) {
           return;
         }
+        // Check if the agent has sent a message to the group before
+        await conversation.sync()
+        const messages=await conversation.messages()
+        const hasSentBefore = messages.some(
+            (msg) => msg.senderInboxId.toLowerCase() === client.inboxId.toLowerCase(),
+        );
+        console.log("🔍 hasSentBefore:", hasSentBefore);
+
+        if (!hasSentBefore) {
 
         // Check if this is a new Group (agent was added to a group)
         if (conversation.constructor.name === "Group") {
           //await for 6 seconds
-          await new Promise((resolve) => setTimeout(resolve, 6000));
+          await new Promise((resolve) => setTimeout(resolve, 4000));
           // Send the message immediately
           conversation
             .send(
@@ -641,6 +650,7 @@ The group chat has a leaderboard considering all the matches made on Squabble on
             .catch((error: any) => {
               console.error("❌ Failed to send welcome message:", error);
             });
+        }
         }
       } catch (error) {
         console.log("🔍 Error in conversation stream callback:", error);
