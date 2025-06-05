@@ -60,6 +60,13 @@ const SQUABBLE_TRIGGERS = ["@squabble", "@squabble.base.eth"];
 const memoryStore: Record<string, MemorySaver> = {};
 const agentStore: Record<string, Agent> = {};
 
+// Track recent agent messages for context detection
+const recentAgentMessages: Record<
+  string,
+  { timestamp: number; messageId: string }
+> = {};
+const CONTEXT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
 interface AgentConfig {
   configurable: {
     thread_id: string;
@@ -67,6 +74,42 @@ interface AgentConfig {
 }
 
 type Agent = ReturnType<typeof createReactAgent>;
+
+/**
+ * Track when the agent sends a message for context detection
+ * @param conversationId - The conversation ID
+ * @param messageId - The message ID that was sent
+ */
+function trackAgentMessage(conversationId: string, messageId: string) {
+  recentAgentMessages[conversationId] = {
+    timestamp: Date.now(),
+    messageId: messageId,
+  };
+  console.log(`🤖 Tracked agent message in conversation ${conversationId}`);
+}
+
+/**
+ * Check if a message is within the context window of a recent agent message
+ * @param conversationId - The conversation ID
+ * @returns boolean - Whether there was a recent agent message
+ */
+function isWithinContextWindow(conversationId: string): boolean {
+  const recentMessage = recentAgentMessages[conversationId];
+  if (!recentMessage) {
+    return false;
+  }
+
+  const timeDiff = Date.now() - recentMessage.timestamp;
+  const isWithinWindow = timeDiff <= CONTEXT_WINDOW_MS;
+
+  if (isWithinWindow) {
+    console.log(
+      `⏰ Message is within context window (${Math.round(timeDiff / 1000)}s ago)`,
+    );
+  }
+
+  return isWithinWindow;
+}
 
 /**
  * Check if a message is a reply to the agent
@@ -81,10 +124,18 @@ function isReplyToAgent(
   // Check if the message is a reply type
   if (message.contentType?.typeId === "reply") {
     console.log(`📝 Message is a reply type`);
-    console.log(
-      `📝 Reply content structure:`,
-      JSON.stringify(message.content, null, 2),
-    );
+    console.log(`📝 Message ID:`, message.id);
+    console.log(`📝 Sender:`, message.senderInboxId);
+    console.log(`📝 Content:`, message.content);
+    console.log(`📝 ContentType:`, message.contentType);
+
+    // Check additional fields that might contain the reply content
+    const messageAny = message as any;
+    console.log(`📝 Fallback:`, messageAny.fallback);
+    console.log(`📝 Parameters:`, messageAny.parameters);
+    console.log(`📝 Compression:`, messageAny.compression);
+    console.log(`📝 Kind:`, messageAny.kind);
+
     return true;
   }
   return false;
@@ -98,10 +149,11 @@ function isReplyToAgent(
 function extractMessageContent(message: DecodedMessage): string {
   // Handle reply messages
   if (message.contentType?.typeId === "reply") {
-    // Reply messages typically have a structure like { content: "actual message", reference: {...} }
+    const messageAny = message as any;
     const replyContent = message.content as any;
     console.log(`🔍 Reply content debug:`, replyContent);
 
+    // Check if content is in the main content field
     if (replyContent && typeof replyContent === "object") {
       // Try different possible property names for the actual content
       if (replyContent.content) {
@@ -115,9 +167,48 @@ function extractMessageContent(message: DecodedMessage): string {
       }
     }
 
+    // Check fallback field (might contain the actual user message)
+    if (messageAny.fallback && typeof messageAny.fallback === "string") {
+      console.log(
+        `🔍 Found content in fallback field: "${messageAny.fallback}"`,
+      );
+
+      // Extract the actual user message from the fallback format
+      // Format: 'Replied with "actual message" to an earlier message'
+      const fallbackText = messageAny.fallback;
+      const match = fallbackText.match(
+        /Replied with "(.+)" to an earlier message/,
+      );
+      if (match && match[1]) {
+        const actualMessage = match[1];
+        console.log(`🔍 Extracted actual reply content: "${actualMessage}"`);
+        return actualMessage;
+      }
+
+      // If pattern doesn't match, return the full fallback text
+      return fallbackText;
+    }
+
+    // Check parameters field (might contain reply data)
+    if (messageAny.parameters && typeof messageAny.parameters === "object") {
+      const params = messageAny.parameters;
+      if (params.content) {
+        console.log(
+          `🔍 Found content in parameters.content: "${params.content}"`,
+        );
+        return String(params.content);
+      }
+      if (params.text) {
+        console.log(`🔍 Found content in parameters.text: "${params.text}"`);
+        return String(params.text);
+      }
+    }
+
     // If content is null/undefined, return empty string to avoid errors
     if (replyContent === null || replyContent === undefined) {
-      console.log(`⚠️ Reply content is null/undefined`);
+      console.log(
+        `⚠️ Reply content is null/undefined, checking other fields failed`,
+      );
       return "";
     }
 
@@ -147,6 +238,11 @@ function shouldRespondToMessage(
 
   // Safety check for empty content
   if (!messageContent || messageContent.trim() === "") {
+    // Special case: if it's a reply type but empty, still check context window
+    if (message.contentType?.typeId === "reply") {
+      console.log(`⚠️ Empty reply message, checking context window`);
+      return isWithinContextWindow(message.conversationId);
+    }
     console.log(`⚠️ Empty message content, skipping`);
     return false;
   }
@@ -156,6 +252,14 @@ function shouldRespondToMessage(
   // If this is a reply to the agent, always process it
   if (isReplyToAgent(message, agentInboxId)) {
     console.log(`✅ Processing reply to agent: "${messageContent}"`);
+    return true;
+  }
+
+  // Check if message is within context window of recent agent message
+  if (isWithinContextWindow(message.conversationId)) {
+    console.log(
+      `✅ Processing message within context window: "${messageContent}"`,
+    );
     return true;
   }
 
@@ -352,7 +456,13 @@ async function initializeAgent(
         Squabble is a fast-paced, social word game designed for private friend groups on XMTP like the Coinbase Wallet. 
         In each match of 2 to 5 minutes, 2 to 6 players compete on the same randomized letter grid in real-time, racing against the clock to place or create as many words as possible on the grid. 
         The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
-        The group chat has a leaderboard considering all the matches made on Squabble on that group chat."
+        The group chat has a leaderboard considering all the matches made on Squabble on that group chat.
+        
+        IMPORTANT RULES:
+        1. When a tool returns a message starting with 'DIRECT_MESSAGE_SENT:', respond with exactly 'TOOL_HANDLED' and nothing else.
+        2. When users reply with numbers, amounts, or phrases like 'no bet' after being asked for a bet amount, interpret these as bet amounts and call squabble_start_game with the betAmount parameter.
+        3. Examples of bet amount replies: '1', '0.01', 'no bet', '10 $' - all should trigger game creation. The amount must be specificied in $ or USDC or just a number, in the latter case it will be interpreted as USDC. No other tokens!. 
+        4. If a user provides what looks like a bet amount (number or 'no bet'), always use the squabble_start_game tool."
       `,
     });
 
@@ -404,13 +514,6 @@ async function processMessage(
       }
     }
 
-    // Check if the response contains the signal to reset conversation state
-    if (response.includes("RESET_CONVERSATION_STATE")) {
-      console.log("🎮 Game creation detected - will reset conversation state");
-      // Return empty string since game message was already sent directly
-      return "";
-    }
-
     console.log(`✅ Agent response generated (${response.length} chars)`);
     return response.trim();
   } catch (error) {
@@ -460,22 +563,6 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       return;
     }
 
-    // Check if this is a start game command that should prompt for bet
-    const lowerMessage = messageContent.toLowerCase();
-    const isReply = isReplyToAgent(message, client.inboxId);
-
-    if (
-      !isReply &&
-      (lowerMessage.includes("@squabble.base.eth start") ||
-        lowerMessage.includes("@squabble start")) &&
-      !lowerMessage.includes("bet")
-    ) {
-      await conversation.send(
-        "🎮 How much would you like to bet for this game? You can enter an amount or say 'no bet' if you prefer.",
-      );
-      return;
-    }
-
     // Get the sender's wallet address
     const senderInboxState = await client.preferences.inboxStateFromInboxIds([
       senderAddress,
@@ -491,13 +578,16 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     );
     const response = await processMessage(agent, config, messageContent);
 
-    // Check if this was a game creation (empty response means game was created and sent directly)
-    if (response === "" && messageContent.toLowerCase().includes("start")) {
-      console.log("🎮 Game created - no additional response needed");
+    // Don't send "TOOL_HANDLED" responses - these indicate tools have already sent direct messages
+    if (response.trim() === "TOOL_HANDLED") {
+      console.log(
+        "🎮 Tool has already sent direct message - skipping LLM response",
+      );
       return;
     }
 
-    await conversation.send(response);
+    const sentMessageId = await conversation.send(response);
+    trackAgentMessage(conversation.id, sentMessageId);
     console.log(`✅ Response sent to ${senderAddress}`);
   } catch (error) {
     console.error("❌ Error handling message:", error);
