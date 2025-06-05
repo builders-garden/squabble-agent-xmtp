@@ -81,9 +81,38 @@ function isReplyToAgent(
   // Check if the message is a reply type
   if (message.contentType?.typeId === "reply") {
     console.log(`📝 Message is a reply type`);
+    console.log(
+      `📝 Reply content structure:`,
+      JSON.stringify(message.content, null, 2),
+    );
     return true;
   }
   return false;
+}
+
+/**
+ * Extract message content from different message types
+ * @param message - The decoded XMTP message
+ * @returns The message content as a string
+ */
+function extractMessageContent(message: DecodedMessage): string {
+  // Handle reply messages
+  if (message.contentType?.typeId === "reply") {
+    // Reply messages typically have a structure like { content: "actual message", reference: {...} }
+    const replyContent = message.content as any;
+    if (
+      replyContent &&
+      typeof replyContent === "object" &&
+      replyContent.content
+    ) {
+      return String(replyContent.content);
+    }
+    // Fallback to stringifying the whole content if structure is different
+    return JSON.stringify(replyContent);
+  }
+
+  // Handle regular text messages
+  return String(message.content);
 }
 
 /**
@@ -96,7 +125,7 @@ function shouldRespondToMessage(
   message: DecodedMessage,
   agentInboxId: string,
 ): boolean {
-  const messageContent = String(message.content);
+  const messageContent = extractMessageContent(message);
   const lowerMessage = messageContent.toLowerCase().trim();
 
   // If this is a reply to the agent, always process it
@@ -382,7 +411,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       return;
     }
 
-    const messageContent = String(message.content);
+    const messageContent = extractMessageContent(message);
     console.log(`📨 Message from ${senderAddress}: "${messageContent}"`);
 
     // Get the conversation first
