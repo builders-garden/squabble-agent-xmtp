@@ -657,6 +657,11 @@ The group chat has a leaderboard considering all the matches made on Squabble on
   // Now the main message stream can run without being blocked
   for await (const message of messageStream) {
     if (message) {
+      console.log("🔍 Message received");
+      console.log(message.contentType);
+      console.log(message.content);
+      console.log(message.conversationId);
+      console.log(message.kind);
       await handleMessage(message, client);
     }
   }
