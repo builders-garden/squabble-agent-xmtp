@@ -54,7 +54,7 @@ const XMTP_STORAGE_DIR = ".data/xmtp";
 const WALLET_STORAGE_DIR = ".data/wallet";
 
 // Squabble trigger keywords and commands
-const SQUABBLE_TRIGGERS = ["/squabble"];
+const SQUABBLE_TRIGGERS = ["@squabble", "@squabble.base.eth"];
 
 // Conversation state management
 interface ConversationState {
@@ -543,7 +543,7 @@ async function handleMessage(message: DecodedMessage, client: Client) {
       // Check if they mentioned the bot but didn't use proper triggers
       if (shouldSendHelpHint(messageContent)) {
         await conversation.send(
-          "👋 Hi! I'm the Squabble game agent. You asked for help! Try to invoke the agent with /squabble\n",
+          "👋 Hi! I'm the Squabble game agent. You asked for help! Try to invoke the agent with @squabble.base.eth or just @squabble\n",
         );
       }
       return;
@@ -552,10 +552,14 @@ async function handleMessage(message: DecodedMessage, client: Client) {
     // Check if this is a start game command that should prompt for bet
     const lowerMessage = messageContent.toLowerCase();
     if (
-      lowerMessage.includes("/squabble start") &&
+      (lowerMessage.includes("@squabble.base.eth start") ||
+        lowerMessage.includes("@squabble start")) &&
       !lowerMessage.includes("bet")
     ) {
-      setConversationState(conversation.id, true, "/squabble start");
+      const command = lowerMessage.includes("@squabble.base.eth start")
+        ? "@squabble.base.eth start"
+        : "@squabble start";
+      setConversationState(conversation.id, true, command);
       await conversation.send(
         "🎮 How much would you like to bet for this game? You can enter an amount or say 'no bet' if you prefer.",
       );
@@ -633,7 +637,7 @@ In each match, 2 to 6 players compete on the same randomized letter grid in real
 
 The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
 
-The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use /squabble to invoke the squabble agent!`,
+The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use @squabble.base.eth or just @squabbleto invoke the squabble agent!`,
             )
             .then(() => {
               console.log("✅ Welcome message sent to new group");
