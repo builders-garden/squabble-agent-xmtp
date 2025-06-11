@@ -134,11 +134,15 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
         const gameData = await response.json();
         const gameUrl = `${squabbleUrl}/games/${(gameData as GameCreationResponse).id}`;
-        const gameMessage = `🎮 Game created! You can play here: ${gameUrl}\nGood luck! 🍀`;
+        const gameMessage = `🎮 Game created! Good luck! 🍀`;
 
-        // Send the message directly to the conversation
+        // Send the first message with game creation announcement
         console.log("🔧 SENDING GAME MESSAGE DIRECTLY:", gameMessage);
         await conversation.send(gameMessage);
+
+        // Send the second message with just the URL
+        console.log("🔧 SENDING GAME URL DIRECTLY:", gameUrl);
+        await conversation.send(gameUrl);
 
         console.log(
           "✅ TOOL SUCCESS: squabble_start_game - Game created with ID:",
@@ -244,11 +248,15 @@ export function createSquabbleTools(config: SquabbleToolsConfig) {
 
         const gameData = await response.json();
         const gameUrl = `${squabbleUrl}/games/${(gameData as GameCreationResponse).id}`;
-        const gameMessage = `🎮 Latest Game:\nYou can view it here: ${gameUrl}`;
+        const gameMessage = `🎮 Latest Game:`;
 
-        // Send the message directly to the conversation
+        // Send the first message with latest game announcement
         console.log("🔧 SENDING LATEST GAME MESSAGE DIRECTLY:", gameMessage);
         await conversation.send(gameMessage);
+
+        // Send the second message with just the URL
+        console.log("🔧 SENDING LATEST GAME URL DIRECTLY:", gameUrl);
+        await conversation.send(gameUrl);
 
         console.log(
           "✅ TOOL SUCCESS: squabble_latest_game - Latest game info sent directly",
