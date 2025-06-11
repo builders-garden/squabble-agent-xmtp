@@ -25,6 +25,7 @@ interface LeaderboardPlayer {
 
 interface LeaderboardResponse {
   leaderboard: LeaderboardPlayer[];
+  totalFinishedGames: number;
 }
 
 interface GameCreationResponse {
