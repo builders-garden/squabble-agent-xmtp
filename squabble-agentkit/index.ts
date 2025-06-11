@@ -255,10 +255,15 @@ function shouldRespondToMessage(
     return true;
   }
 
-  // Check if message is within context window of recent agent message
-  if (isWithinContextWindow(message.conversationId)) {
+  // Only use context window for reply messages, not regular messages
+  // This prevents the agent from responding to untagged messages just because
+  // it recently sent a message in the conversation
+  if (
+    message.contentType?.typeId === "reply" &&
+    isWithinContextWindow(message.conversationId)
+  ) {
     console.log(
-      `✅ Processing message within context window: "${messageContent}"`,
+      `✅ Processing reply message within context window: "${messageContent}"`,
     );
     return true;
   }
@@ -620,37 +625,37 @@ async function startMessageListener(client: Client) {
           return;
         }
         // Check if the agent has sent a message to the group before
-        await conversation.sync()
-        const messages=await conversation.messages()
+        await conversation.sync();
+        const messages = await conversation.messages();
         const hasSentBefore = messages.some(
-            (msg) => msg.senderInboxId.toLowerCase() === client.inboxId.toLowerCase(),
+          (msg) =>
+            msg.senderInboxId.toLowerCase() === client.inboxId.toLowerCase(),
         );
         console.log("🔍 hasSentBefore:", hasSentBefore);
 
         if (!hasSentBefore) {
-
-        // Check if this is a new Group (agent was added to a group)
-        if (conversation.constructor.name === "Group") {
-          //await for 6 seconds
-          await new Promise((resolve) => setTimeout(resolve, 4000));
-          // Send the message immediately
-          conversation
-            .send(
-              `Squabble is a fast-paced, social word game designed for friend group chats on XMTP. 
+          // Check if this is a new Group (agent was added to a group)
+          if (conversation.constructor.name === "Group") {
+            //await for 6 seconds
+            await new Promise((resolve) => setTimeout(resolve, 4000));
+            // Send the message immediately
+            conversation
+              .send(
+                `Squabble is a fast-paced, social word game designed for friend group chats on XMTP. 
 
 In each match, 2 to 6 players compete on the same randomized letter grid in real-time, racing against the clock to place or create as many words as possible on the grid. 
 
 The twist? Everyone plays simultaneously on the same board, making every round a shared, high-stakes vocabulary duel.
 
 The group chat has a leaderboard considering all the matches made on Squabble on that group chat. Use @squabble.base.eth or just @squabble to invoke the squabble agent!`,
-            )
-            .then(() => {
-              console.log("✅ Welcome message sent to new group");
-            })
-            .catch((error: any) => {
-              console.error("❌ Failed to send welcome message:", error);
-            });
-        }
+              )
+              .then(() => {
+                console.log("✅ Welcome message sent to new group");
+              })
+              .catch((error: any) => {
+                console.error("❌ Failed to send welcome message:", error);
+              });
+          }
         }
       } catch (error) {
         console.log("🔍 Error in conversation stream callback:", error);
